@@ -10,6 +10,7 @@ interface NewsItem {
   is_published: boolean;
   created_at: string;
   image_url: string | null;
+  category_id: number;
   categories: {
     name_bn: string;
   } | null;
@@ -17,10 +18,19 @@ interface NewsItem {
 
 export default function AdminNewsList() {
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const [filteredNews, setFilteredNews] = useState<NewsItem[]>([]); // সার্চ রেজাল্টের জন্য আলাদা স্টেট
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  
+  // ফিল্টার স্টেট
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
 
   const fetchAllNews = async () => {
     setLoading(true);
+    const { data: catData } = await supabase.from("categories").select("*");
+    if (catData) setCategories(catData);
+
     const { data, error } = await supabase
       .from("news")
       .select("*, categories(name_bn)")
@@ -28,6 +38,7 @@ export default function AdminNewsList() {
 
     if (!error && data) {
       setNewsList(data as NewsItem[]);
+      setFilteredNews(data as NewsItem[]);
     }
     setLoading(false);
   };
@@ -35,6 +46,23 @@ export default function AdminNewsList() {
   useEffect(() => {
     fetchAllNews();
   }, []);
+
+  // ⚡ রিয়েল-টাইম সার্চ এবং ফিল্টার মেকানিজম কনসেপ্ট
+  useEffect(() => {
+    let result = newsList;
+
+    if (searchQuery) {
+      result = result.filter(item => 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    if (selectedCategory) {
+      result = result.filter(item => item.category_id === Number(selectedCategory));
+    }
+
+    setFilteredNews(result);
+  }, [searchQuery, selectedCategory, newsList]);
 
   const togglePublish = async (id: number, currentStatus: boolean) => {
     const { error } = await supabase.from("news").update({ is_published: !currentStatus }).eq("id", id);
@@ -53,31 +81,54 @@ export default function AdminNewsList() {
   return (
     <div className="space-y-6">
       
-      {/* 🎛️ স্মার্ট রেসপন্সিভ হেডার উইজেট */}
+      {/* 🎛️ স্মার্ট রেসপন্সিভ হেডার */}
       <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">📰 সামগ্রিক সংবাদ তালিকা</h1>
-          <p className="text-slate-400 text-xs mt-0.5">সব সংবাদ এখানে ট্র্যাক, পাবলিশ ও রিমুভ করুন।</p>
+          <p className="text-slate-400 text-xs mt-0.5">সব সংবাদ এখানে কুইক সার্চ, ফিল্টার ও ট্র্যাক করুন।</p>
         </div>
-        <Link href="/admin/news/create" className="w-full sm:w-auto text-center bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-2xl text-xs font-black transition-all duration-300 shadow-lg shadow-red-600/10 cursor-pointer">
+        <Link href="/admin/news/create" className="w-full sm:w-auto text-center bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-2xl text-xs font-black transition shadow-lg shadow-red-600/10 cursor-pointer">
           ➕ নতুন সংবাদ পোস্ট
         </Link>
+      </div>
+
+      {/* 🔍 ফিউচারিস্টিক কুইক সার্চ ও ফিল্টার কন্সোল বার */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-3 items-center">
+        <div className="relative w-full sm:flex-1">
+          <input 
+            type="text" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="🔍 শিরোনাম দিয়ে তাৎক্ষণিক খবর খুঁজুন..." 
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-4 py-2.5 focus:outline-none focus:border-red-500 font-bold text-xs text-black"
+          />
+        </div>
+        <div className="w-full sm:w-48">
+          <select 
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-500 font-black text-xs text-slate-700 cursor-pointer"
+          >
+            <option value="">모든 ক্যাটাগরি (All)</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name_bn}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
         <div className="py-20 text-center space-y-3 bg-white rounded-3xl border border-slate-200/80">
           <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-slate-400 text-[11px] font-mono font-bold tracking-widest uppercase">Fetching Live Stream...</p>
+          <p className="text-slate-400 text-[11px] font-mono font-bold tracking-widest uppercase">Filtering Quantum Matrix...</p>
         </div>
-      ) : newsList.length === 0 ? (
+      ) : filteredNews.length === 0 ? (
         <div className="py-14 text-center bg-white rounded-3xl border border-slate-200/80 text-slate-400 text-xs font-bold">
-          কোনো সংবাদ পাওয়া যায়নি।
+          সার্চ বা ফিল্টারের সাথে মিলেছে এমন কোনো সংবাদ পাওয়া যায়নি।
         </div>
       ) : (
         <>
-          {/* 📱 ১. মোবাইল এবং ট্যাবলেট রেসপন্সিভ ভিউ (শুধুমাত্র ছোট স্ক্রিনে দেখাবে) */}
+          {/* 📱 ১. মোবাইল ভিউ */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:hidden">
-            {newsList.map((news) => (
+            {filteredNews.map((news) => (
               <div key={news.id} className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm flex flex-col justify-between gap-4 group">
                 <div className="flex gap-3">
                   <div className="w-16 h-12 bg-slate-100 rounded-xl overflow-hidden border border-slate-200/40 shrink-0">
@@ -97,16 +148,14 @@ export default function AdminNewsList() {
                   </div>
                 </div>
 
-                {/* মোবাইল ফুটপ্রিন্ট মেটা */}
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
                   <div className="text-[10px] font-mono text-slate-400 font-bold">
                     📅 {new Date(news.created_at).toLocaleDateString('bn-BD')}
                   </div>
-                  
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => togglePublish(news.id, news.is_published)}
-                      className={`px-2.5 py-1 rounded-full text-[9px] font-black tracking-wider shadow-sm cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-full text-[9px] font-black tracking-wider cursor-pointer ${
                         news.is_published ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-700 border border-rose-100"
                       }`}
                     >
@@ -120,7 +169,7 @@ export default function AdminNewsList() {
             ))}
           </div>
 
-          {/* 🖥️ ২. ডেডিকেটেড ডেস্কটপ লেআউট টেবিল (শুধুমাত্র ল্যাপটপ ও বড় স্ক্রিনে দেখাবে) */}
+          {/* 🖥️ ২. ডেস্কটপ লেআউট টেবিল */}
           <div className="hidden lg:block bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -135,7 +184,7 @@ export default function AdminNewsList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {newsList.map((news) => (
+                  {filteredNews.map((news) => (
                     <tr key={news.id} className="hover:bg-slate-50/40 transition-colors duration-200">
                       <td className="p-4">
                         <div className="w-14 aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200/40 shadow-inner">
@@ -146,21 +195,16 @@ export default function AdminNewsList() {
                           )}
                         </div>
                       </td>
-
-                      {/* ডেস্কটপ টাইটেল রেসপন্সিভ লাইন লক */}
                       <td className="p-4 max-w-xs">
                         <p className="font-bold text-slate-800 text-xs sm:text-sm leading-snug line-clamp-1 md:line-clamp-2 hover:text-red-600 transition-colors">
                           {news.title}
                         </p>
                       </td>
-
                       <td className="p-4">
                         <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-2.5 py-1 rounded-lg border border-slate-200/30 whitespace-nowrap">
                           {news.categories?.name_bn || "N/A"}
                         </span>
                       </td>
-
-                      {/* 🕒 স্মার্ট চিপ ডেট-টাইম */}
                       <td className="p-4">
                         <div className="flex flex-col gap-1 text-[11px] font-mono font-bold whitespace-nowrap">
                           <span className="text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200/40 w-fit">
@@ -171,7 +215,6 @@ export default function AdminNewsList() {
                           </span>
                         </div>
                       </td>
-
                       <td className="p-4">
                         <button 
                           onClick={() => togglePublish(news.id, news.is_published)} 
@@ -184,7 +227,6 @@ export default function AdminNewsList() {
                           {news.is_published ? "🟢 LIVE" : "🔴 ARCHIVED"}
                         </button>
                       </td>
-
                       <td className="p-4 text-center">
                         <div className="flex justify-center gap-1.5">
                           <Link href={`/admin/news/edit/${news.id}`} className="bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-800 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 border border-slate-200/40">এডিট</Link>
